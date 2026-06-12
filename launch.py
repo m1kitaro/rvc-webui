@@ -96,7 +96,7 @@ def prepare_environment():
 
     torch_command = os.environ.get(
         "TORCH_COMMAND",
-        "pip install torch torchaudio --extra-index-url https://download.pytorch.org/whl/cu118",
+        "pip install torch==2.7.1 torchaudio==2.7.1 --extra-index-url https://download.pytorch.org/whl/cu128",
     )
 
     sys.argv, skip_install = extract_arg(sys.argv, "--skip-install")
