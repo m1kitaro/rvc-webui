@@ -393,6 +393,12 @@ Step 1 で列挙した **11 呼び出し / 9 ファイル** すべてに機械�
 | `server.py` | Flask サーバ単体起動時の fairseq ロード |
 | `lib/rvc/preprocessing/extract_feature.py` | Windows `spawn` の ProcessPoolExecutor 子プロセスは `webui.py` を再 import しないため、`fairseq` import 前にパッチを当てる必要がある |
 
+**`lib/rvc/train.py` に直接 import を追加しなかった理由**:
+
+- `train.py` はモジュール先頭（34–35 行）で `from .preprocessing.extract_feature import ...` しており、import 連鎖により **常に `extract_feature.py` が先にロード**される
+- `extract_feature.py` 7 行目で `modules.torch_compat` を import するため、`train.py` 経由の通常学習・`mp.spawn` 子プロセス双方で `fairseq` import 前にパッチが適用される
+- パッチ実装の重複 import を避けるため、`train.py` への直接追加は不要
+
 ### 3-3. 変更ファイル
 
 | ファイル | 変更内容 |
@@ -406,11 +412,84 @@ Step 1 で列挙した **11 呼び出し / 9 ファイル** すべてに機械�
 
 ---
 
+## Step 4: 学習パイプライン追従修正（Step 5 検証で発見した問題）
+
+実施日: 2026-06-13
+
+### 4-1. fairseq インストール失敗（pip / omegaconf）
+
+**実エラー**（クリーン Python 3.10.11 venv、`pip install -r requirements.txt`）:
+
+```
+ERROR: ResolutionImpossible
+The conflict is caused by:
+    fairseq 0.12.2 depends on omegaconf<2.1
+    hydra-core 1.0.7 depends on omegaconf<2.1 and >=2.0.5
+Additionally, some packages ... have no matching distributions available:
+    omegaconf
+WARNING: Ignoring version 2.0.6 of omegaconf since it has invalid metadata:
+    PyYAML (>=5.1.*)
+Please use pip<24.1 if you need to use this version.
+```
+
+**原因**: pip 24.1 以降が omegaconf 2.0.5/2.0.6 の非標準メタデータ（`PyYAML>=5.1.*`）を拒否。fairseq 0.12.2 の推移的依存が解決不能になる。
+
+**出典**: pip エラーメッセージ内 `https://github.com/pypa/pip/issues/12063`
+
+**修正**: `launch.py` の `requirements.txt` インストール直前に `pip install "pip<24.1"` を追加。
+
+**検証**: pip 24.0 降格後の `pip install -r requirements.txt` 成功、`pip check` 通過。
+
+---
+
+## Step 5: エージェント側検証
+
+実施日: 2026-06-13  
+環境: Windows, Python 3.10.11, クリーン venv（`py -3.10 -m venv venv`）
+
+### 5-1. 依存インストール
+
+| 手順 | 結果 |
+|------|------|
+| torch 2.7.1+cu128 / torchaudio 2.7.1+cu128（launch.py 相当コマンド） | 成功 |
+| requirements.txt（pip 24.0 使用、Step 4 修正前は失敗） | 成功 |
+| `pip check` | **No broken requirements found.** |
+
+### 5-2. torch バージョン
+
+```
+2.7.1+cu128 12.8
+```
+
+期待値（2.7.1 / 12.8）と一致。
+
+### 5-3. import / WebUI 起動
+
+| テスト | 結果 |
+|--------|------|
+| `import modules.torch_compat; import gradio; from fairseq import checkpoint_utils; from modules import ui` | 成功 |
+| gradio / gradio_client 版 | 3.36.1 / 0.2.10 |
+| `ui.create_ui()` | モデル DL 後、**ffmpeg.zip 取得失敗**で中断（`shutil.ReadError: ffmpeg.zip is not a zip file`） |
+
+ffmpeg エラーは gyan.dev からの DL 破損/ネットワーク起因で、import エラーではない。Windows 実機では `bin/ffmpeg.exe` 同梱または手動配置で回避可能。GPU 不在環境での import 検証目的は達成。
+
+### 5-4. 変更ファイル一覧（Step 2〜5 累計）
+
+| ファイル | Step | 理由 |
+|----------|------|------|
+| `launch.py` | 2, 4 | torch 2.7.1+cu128 固定、pip<24.1 制約 |
+| `requirements/main.txt` | 2 | gradio-client==0.2.10 固定 |
+| `modules/torch_compat.py` | 3 | fairseq 向け torch.load モンキーパッチ |
+| `webui.py`, `server.py` | 3 | パッチ適用 import |
+| `extract_feature.py` 他 7 ファイル | 3 | weights_only=False |
+| `VERIFY.md` | 5 | 実機検証手順 |
+| `WORKLOG.md` | 1–5 | 調査・変更記録 |
+
+---
+
 ## 未着手
 
-- Step 4: 学習パイプライン追従修正
-- Step 5: エージェント側検証
-- VERIFY.md 作成
+- 人間による RTX 5090 実機検証（`VERIFY.md` 参照）
 
 ---
 
