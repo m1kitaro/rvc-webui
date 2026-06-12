@@ -116,6 +116,13 @@ def prepare_environment():
     if not is_installed("pyngrok") and ngrok:
         run_pip("install pyngrok", "ngrok")
 
+    # fairseq 0.12.2 pulls omegaconf<2.1 with legacy metadata rejected by pip>=24.1
+    run(
+        f'"{python}" -m pip install "pip<24.1"',
+        desc="Ensuring pip version compatible with fairseq dependencies",
+        errdesc="Couldn't configure pip",
+    )
+
     run(
         f'"{python}" -m pip install -r requirements.txt',
         desc=f"Installing requirements",
