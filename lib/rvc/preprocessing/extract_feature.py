@@ -4,6 +4,7 @@ import traceback
 from concurrent.futures import ProcessPoolExecutor
 from typing import *
 
+import modules.torch_compat  # noqa: F401
 import numpy as np
 import soundfile as sf
 import torch

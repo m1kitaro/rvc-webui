@@ -552,7 +552,7 @@ def training_runner(
         epoch = 1
         global_step = 0
         if os.path.exists(pretrain_g) and os.path.exists(pretrain_d):
-            net_g_state = torch.load(pretrain_g, map_location="cpu")["model"]
+            net_g_state = torch.load(pretrain_g, map_location="cpu", weights_only=False)["model"]
             emb_spk_size = (config.model.spk_embed_dim, config.model.gin_channels)
             emb_phone_size = (config.model.hidden_channels, config.model.emb_channels)
             if emb_spk_size != net_g_state["emb_g.weight"].size():
@@ -602,11 +602,11 @@ def training_runner(
 
             if is_multi_process:
                 net_d.module.load_state_dict(
-                    torch.load(pretrain_d, map_location="cpu")["model"]
+                    torch.load(pretrain_d, map_location="cpu", weights_only=False)["model"]
                 )
             else:
                 net_d.load_state_dict(
-                    torch.load(pretrain_d, map_location="cpu")["model"]
+                    torch.load(pretrain_d, map_location="cpu", weights_only=False)["model"]
                 )
             if is_main_process:
                 print(f"loaded pretrained {pretrain_g} {pretrain_d}")
@@ -633,7 +633,7 @@ def training_runner(
             embedder = embedder.float()
 
         if (augment_path is not None):
-            state_dict = torch.load(augment_path, map_location="cpu")
+            state_dict = torch.load(augment_path, map_location="cpu", weights_only=False)
             if state_dict["f0"] == 1:
                 augment_net_g = SynthesizerTrnMs256NSFSid(
                     **state_dict["params"], is_half=config.train.fp16_run

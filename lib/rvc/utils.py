@@ -54,7 +54,7 @@ def find_empty_port():
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, load_opt=1):
     assert os.path.isfile(checkpoint_path)
-    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
     saved_state_dict = checkpoint_dict["model"]
     if hasattr(model, "module"):

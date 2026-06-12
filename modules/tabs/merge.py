@@ -119,6 +119,7 @@ class Merge(Tab):
             model = torch.load(
                 os.path.join(models.MODELS_DIR, "checkpoints", model),
                 map_location="cpu",
+                weights_only=False,
             )
             vc_model = models.VoiceConvertModel("merge", model)
             max = vc_model.n_spk

@@ -56,7 +56,7 @@ class VoiceServerModel:
             self.x_max = 65
 
         # load_model
-        state_dict = torch.load(rvc_model_file, map_location="cpu")
+        state_dict = torch.load(rvc_model_file, map_location="cpu", weights_only=False)
         update_state_dict(state_dict)
         self.state_dict = state_dict
         self.tgt_sr = state_dict["params"]["sr"]

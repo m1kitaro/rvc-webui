@@ -1,3 +1,5 @@
+import modules.torch_compat  # noqa: F401
+
 import io
 import json
 import os

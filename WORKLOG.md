@@ -356,9 +356,58 @@ pip install torch==2.7.1 torchaudio==2.7.1 --extra-index-url https://download.py
 
 ---
 
+## Step 3: torch 2.6+ 互換パッチ（weights_only）
+
+実施日: 2026-06-13
+
+### 3-1. 自リポジトリ内 `torch.load` への `weights_only=False` 追加
+
+Step 1 で列挙した **11 呼び出し / 9 ファイル** すべてに機械的に追加。
+
+| ファイル | 行 |
+|----------|-----|
+| `modules/models.py` | 260 |
+| `modules/tabs/merge.py` | 119–122 |
+| `modules/merge.py` | 28 |
+| `modules/server/model.py` | 59 |
+| `lib/rvc/utils.py` | 57 |
+| `lib/rvc/train.py` | 555, 605, 609, 636 |
+| `lib/rvc/data_utils.py` | 95, 227 |
+
+`torch.save` は変更なし。
+
+### 3-2. fairseq 内部向けモンキーパッチ
+
+**新規**: `modules/torch_compat.py`
+
+- `torch.load` をラップし、`weights_only` が **kwargs に無い場合のみ** `False` を付与
+- 呼び出し元が `weights_only=` を明示した場合は上書きしない
+- コメントで「ローカルの信頼済みモデルのみ」前提を明記
+- site-packages / fairseq フォーク差し替えは行わない
+
+**適用箇所**（パッチ実装は `modules/torch_compat.py` の 1 箇所に集約）:
+
+| ファイル | 理由 |
+|----------|------|
+| `webui.py` | 正規起動エントリ（`launch.py` → `webui.py`） |
+| `server.py` | Flask サーバ単体起動時の fairseq ロード |
+| `lib/rvc/preprocessing/extract_feature.py` | Windows `spawn` の ProcessPoolExecutor 子プロセスは `webui.py` を再 import しないため、`fairseq` import 前にパッチを当てる必要がある |
+
+### 3-3. 変更ファイル
+
+| ファイル | 変更内容 |
+|----------|----------|
+| `modules/torch_compat.py` | 新規: `torch.load` モンキーパッチ |
+| `webui.py` | 起動時に `torch_compat` import |
+| `server.py` | 同上 |
+| `lib/rvc/preprocessing/extract_feature.py` | spawn 子プロセス用 import |
+| `modules/models.py` 他 6 ファイル | `weights_only=False` 追加 |
+| `WORKLOG.md` | Step 3 記録 |
+
+---
+
 ## 未着手
 
-- Step 3: weights_only パッチ
 - Step 4: 学習パイプライン追従修正
 - Step 5: エージェント側検証
 - VERIFY.md 作成

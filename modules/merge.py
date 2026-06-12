@@ -25,7 +25,7 @@ def merge(
 
     def load_weight(path: str):
         print(f"Loading {path}...")
-        state_dict = torch.load(path, map_location="cpu")
+        state_dict = torch.load(path, map_location="cpu", weights_only=False)
         if "model" in state_dict:
             weight = extract(state_dict)
         else:
