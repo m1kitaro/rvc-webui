@@ -556,6 +556,63 @@ gradio UI が HTTP 200 で返るようになり、TemplateResponse エラー・V
 
 ---
 
+## Step 7: Windows 学習ループ修正（DataLoader / dist cleanup / デバッグ出力）
+
+実施日: 2026-06-13
+
+### 7-1. 問題
+
+学習ボタンを押すと特徴抽出後に**無音のまま停止**（エラーなし・GPU 使用なし）。
+
+**根本原因 (A): DataLoader `num_workers=4` の Windows spawn 問題**
+
+Windows では `multiprocessing` の start method が `spawn` のみ。`num_workers > 0` の DataLoader はワーカープロセスを起動するとき `__main__` として `webui.py` を再インポートする。
+`webui.py` は起動時に GUI・モデルロード等の重い処理を行うため、ワーカーが無音でクラッシュし DataLoader がハングする。
+`persistent_workers=True` と `prefetch_factor=8` は `num_workers=0` では指定できない（`ValueError`）ため、同時に削除が必要。
+
+**根本原因 (B): `dist.destroy_process_group()` 未呼び出し**
+
+`training_runner` 終了後も process group が初期化済み状態のまま残る。2回目の学習実行時に `if not dist.is_initialized()` が True になり、`init_process_group` がスキップされる（古いグループが残るためその後の集合通信が失敗 or ハング）。
+
+### 7-2. 修正内容（`lib/rvc/train.py` のみ）
+
+**① DataLoader を `num_workers=0` に変更（line 491–498）**
+
+- `num_workers=4` → `num_workers=0`
+- `persistent_workers=True` 削除（num_workers=0 では無効）
+- `prefetch_factor=8` 削除（num_workers=0 では指定不可）
+- 主スレッドでのデータロードになるため並列化はなくなるが、Windows での動作安定性を優先
+
+**② dist process group の確実なクリーンアップ**
+
+`init_process_group` 直前に `if dist.is_initialized(): dist.destroy_process_group()` を追加。これにより:
+- 前回学習が正常終了していれば: 末尾の `destroy` で済んでいるので `is_initialized()` が False → スキップ
+- 前回学習が異常終了していれば: `is_initialized()` が True → 古いグループを破棄してから再 init
+
+関数末尾にも `dist.destroy_process_group()` を追加（正常終了時のクリーンアップ）。
+
+**③ デバッグ print の挿入（一時的）**
+
+学習ループ内の主要チェックポイント 6 箇所に `print(..., flush=True)` を追加:
+
+| 箇所 | 出力例 |
+|------|--------|
+| training_runner 開始 | `[DBG] training_runner start rank=0 world_size=1` |
+| dist 初期化後 | `[DBG] dist initialized rank=0` |
+| DataLoader 作成後 | `[DBG] DataLoader created num_workers=0` |
+| モデルを GPU 移動後 | `[DBG] models moved to device rank=0` |
+| エポックループ先頭 | `[DBG] epoch 1 start rank=0` |
+| ファーストバッチ受信 | `[DBG] first batch received epoch=1 rank=0` |
+
+### 7-3. 変更ファイル
+
+| ファイル | 変更内容 |
+|----------|----------|
+| `lib/rvc/train.py` | DataLoader num_workers=0、dist cleanup、デバッグprint追加 |
+| `WORKLOG.md` | Step 7 記録 |
+
+---
+
 ## 未着手
 
 - 人間による RTX 5090 実機検証（`VERIFY.md` 参照）

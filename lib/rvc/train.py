@@ -432,6 +432,7 @@ def training_runner(
     save_only_last: bool = False,
     device: Optional[Union[str, torch.device]] = None,
 ):
+    print(f"[DBG] training_runner start rank={rank} world_size={world_size}", flush=True)
     config.train.batch_size = batch_size
     log_dir = os.path.join(training_dir, "logs")
     state_dir = os.path.join(training_dir, "state")
@@ -456,10 +457,12 @@ def training_runner(
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    if not dist.is_initialized():
-        dist.init_process_group(
-            backend="gloo", init_method="env://", rank=rank, world_size=world_size
-        )
+    if dist.is_initialized():
+        dist.destroy_process_group()
+    dist.init_process_group(
+        backend="gloo", init_method="env://", rank=rank, world_size=world_size
+    )
+    print(f"[DBG] dist initialized rank={rank}", flush=True)
 
     if is_multi_process:
         torch.cuda.set_device(rank)
@@ -487,14 +490,13 @@ def training_runner(
 
     train_loader = DataLoader(
         train_dataset,
-        num_workers=4,
+        num_workers=0,
         shuffle=False,
         pin_memory=True,
         collate_fn=collate_fn,
         batch_sampler=train_sampler,
-        persistent_workers=True,
-        prefetch_factor=8,
     )
+    print("[DBG] DataLoader created num_workers=0", flush=True)
     speaker_info = None
     if os.path.exists(os.path.join(training_dir, "speaker_info.json")):
         with open(os.path.join(training_dir, "speaker_info.json"), "r") as f:
@@ -531,6 +533,7 @@ def training_runner(
         net_d = net_d.cuda(rank)
     else:
         net_d = net_d.to(device=device)
+    print(f"[DBG] models moved to device rank={rank}", flush=True)
 
     optim_g = torch.optim.AdamW(
         net_g.parameters(),
@@ -676,6 +679,7 @@ def training_runner(
     progress_bar.set_postfix(epoch=epoch)
     step = -1 + len(train_loader) * (epoch - 1)
     for epoch in range(epoch, total_epoch + 1):
+        print(f"[DBG] epoch {epoch} start rank={rank}", flush=True)
         train_loader.batch_sampler.set_epoch(epoch)
 
         net_g.train()
@@ -691,6 +695,8 @@ def training_runner(
             shuffle(cache)
 
         for batch_idx, batch in data:
+            if batch_idx == 0:
+                print(f"[DBG] first batch received epoch={epoch} rank={rank}", flush=True)
             step += 1
             progress_bar.update(1)
             if f0:
@@ -996,3 +1002,7 @@ def training_runner(
             epoch,
             speaker_info
         )
+
+    if dist.is_initialized():
+        dist.destroy_process_group()
+        print(f"[DBG] dist process group destroyed rank={rank}", flush=True)
