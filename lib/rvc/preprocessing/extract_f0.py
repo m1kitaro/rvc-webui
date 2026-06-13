@@ -100,6 +100,7 @@ def compute_f0(
     hop: int,
     f0_max: float,
     f0_min: float,
+    rmvpe_model=None,
 ):
     x = load_audio(path, fs)
     if f0_method == "harvest":
@@ -124,6 +125,9 @@ def compute_f0(
         f0 = get_f0_crepe_computation(x, fs, f0_min, f0_max, 160, "full")
     elif f0_method == "crepe":
         f0 = get_f0_official_crepe_computation(x.astype(np.double), fs, f0_min, f0_max, "full")
+    elif f0_method == "rmvpe":
+        # rmvpe_model must be provided by the caller (created once, reused across files)
+        f0 = rmvpe_model.infer_from_audio(x.astype(np.float32), thred=0.03)
     return f0
 
 
@@ -144,7 +148,7 @@ def coarse_f0(f0, f0_bin, f0_mel_min, f0_mel_max):
     return f0_coarse
 
 
-def processor(paths, f0_method, samplerate=16000, hop_size=160, process_id=0):
+def processor(paths, f0_method, samplerate=16000, hop_size=160, process_id=0, rmvpe_model=None):
     fs = samplerate
     hop = hop_size
 
@@ -163,7 +167,8 @@ def processor(paths, f0_method, samplerate=16000, hop_size=160, process_id=0):
                     and os.path.exists(opt_path2 + ".npy") == True
                 ):
                     continue
-                featur_pit = compute_f0(inp_path, f0_method, fs, hop, f0_max, f0_min)
+                featur_pit = compute_f0(inp_path, f0_method, fs, hop, f0_max, f0_min,
+                                        rmvpe_model=rmvpe_model)
                 np.save(
                     opt_path2,
                     featur_pit,
@@ -224,8 +229,21 @@ def run(training_dir: str, num_processes: int, f0_method: str):
         os.makedirs(dir[0], exist_ok=True)
         os.makedirs(dir[1], exist_ok=True)
 
-    with ProcessPoolExecutor(mp_context=mp.get_context("spawn")) as executer:
-        for i in range(num_processes):
-            executer.submit(processor, paths[i::num_processes], f0_method, process_id=i)
+    if f0_method == "rmvpe":
+        # RMVPE は 172MB モデルを毎 spawn ワーカーでロードさせないため単一プロセス処理
+        from lib.rvc.rmvpe import RMVPE
+        from modules.models import MODELS_DIR
+        model_path = os.path.join(MODELS_DIR, "pretrained", "rmvpe.pt")
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(
+                f"rmvpe.pt が見つかりません: {model_path}\n"
+                "models/pretrained/rmvpe.pt に配置してください。"
+            )
+        rmvpe = RMVPE(model_path, is_half=False, device=get_optimal_torch_device())
+        processor(paths, f0_method, rmvpe_model=rmvpe)
+    else:
+        with ProcessPoolExecutor(mp_context=mp.get_context("spawn")) as executer:
+            for i in range(num_processes):
+                executer.submit(processor, paths[i::num_processes], f0_method, process_id=i)
 
-    processor(paths, f0_method)
+        processor(paths, f0_method)
