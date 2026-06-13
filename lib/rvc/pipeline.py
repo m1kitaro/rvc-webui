@@ -168,6 +168,18 @@ class VocalConvertPipeline(object):
             f0 = self.get_f0_crepe_computation(x, f0_min, f0_max, p_len, 160, "full")
         elif f0_method == "crepe":
             f0 = self.get_f0_official_crepe_computation(x, f0_min, f0_max, "full")
+        elif f0_method == "rmvpe":
+            if not hasattr(self, "_rmvpe"):
+                from lib.rvc.rmvpe import RMVPE
+                from modules.models import MODELS_DIR
+                model_path = os.path.join(MODELS_DIR, "pretrained", "rmvpe.pt")
+                if not os.path.isfile(model_path):
+                    raise FileNotFoundError(
+                        f"rmvpe.pt が見つかりません: {model_path}\n"
+                        "models/pretrained/rmvpe.pt に配置してください。"
+                    )
+                self._rmvpe = RMVPE(model_path, is_half=self.is_half, device=self.device)
+            f0 = self._rmvpe.infer_from_audio(x.astype(np.float32), thred=0.03)
 
         f0 *= pow(2, f0_up_key / 12)
         tf0 = self.sr // self.window  # f0 points per second
