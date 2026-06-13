@@ -84,7 +84,7 @@ def parse_args():
                    help="GPU ID(s), comma separated")
     p.add_argument("--num-cpu", type=int, default=DEFAULTS["num_cpu_process"])
     p.add_argument("--pitch-algo", default=DEFAULTS["pitch_algo"],
-                   choices=["dio", "harvest", "crepe", "mangio-crepe"])
+                   choices=["dio", "harvest", "crepe", "mangio-crepe", "rmvpe"])
     p.add_argument("--batch-size", type=int, default=DEFAULTS["batch_size"])
     p.add_argument("--epochs", type=int, default=DEFAULTS["num_epochs"])
     p.add_argument("--save-every", type=int, default=DEFAULTS["save_every_epoch"])

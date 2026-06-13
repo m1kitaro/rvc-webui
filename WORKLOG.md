@@ -679,6 +679,72 @@ train_model(..., args.augment, augment_path, speaker_info_path, ...)
 
 ---
 
+## Step 9: rmvpe ピッチ抽出サポートの追加
+
+実施日: 2026-06-13  
+ブランチ: `feature/rmvpe-support`
+
+### 9-1. フレーム整合性の確認（リスク B 対処）
+
+f0 のフレーム数が学習側 (extract_f0) と推論側 (pipeline) でズレると音程がずれた変換になる（無音エラーにならず発見しにくい）。
+既存手法を調査して rmvpe の扱いを決定した。
+
+| 手法 | extract_f0.py での扱い | pipeline.py での扱い |
+|------|----------------------|---------------------|
+| harvest | `f0[1:]` なし。pyworld が `frame_period=10ms` で N//160+1 フレーム出力 | `f0[1:]` なし |
+| dio | 同上 | 同上 |
+| crepe | `f0 = f0[1:]` でフレーム数を N//160 に削減 | `f0[1:]` なし（extract と不一致だが既存挙動） |
+| **rmvpe** | **`f0[1:]` なし**（下記参照） | **`f0[1:]` なし** |
+
+**RMVPE の frame_count 計算**:
+
+`infer_from_audio` 内で `MelSpectrogram.forward(audio, center=True)` を呼ぶ。
+`center=True` の `torch.stft` は n_fft//2 = 512 サンプルをパディングするため、
+出力フレーム数 = `ceil(N / hop_length)` ≈ `N // 160 + 1`。
+これは harvest/dio の出力フレーム数と同じオーダーであり、**`f0[1:]` は不要**。
+
+一方、crepe が extract_f0 側で `f0[1:]` を行う理由はドキュメント化されていない（元々の実装の quirk）。
+rmvpe ではこの crepe quirk を踏襲しない方針とした（harvest/dio 基準で整合させる）。
+
+### 9-2. マルチプロセス対策（リスク A 対処）
+
+Windows spawn 環境で rmvpe (172MB) を ProcessPoolExecutor のワーカーごとにロードすると:
+1. 各子プロセスが 172MB を GPU メモリにロードし直す → VRAM の無駄遣い
+2. spawn 子プロセスはモジュール再インポートを行うため無音でクラッシュするリスクがある
+
+対策: `run()` 内で `f0_method == "rmvpe"` のとき ProcessPoolExecutor を使わず、
+RMVPE インスタンスを1回だけ生成してメインスレッドの `processor()` に渡す。
+
+```python
+if f0_method == "rmvpe":
+    rmvpe = RMVPE(model_path, is_half=False, device=get_optimal_torch_device())
+    processor(paths, f0_method, rmvpe_model=rmvpe)
+else:
+    with ProcessPoolExecutor(...):
+        ...
+    processor(paths, f0_method)
+```
+
+### 9-3. モデルパスとエラー処理
+
+既定パス: `models/pretrained/rmvpe.pt`（172MB）。
+ファイルが存在しない場合は `FileNotFoundError` で配置場所を明示する。
+
+### 9-4. 変更ファイル
+
+| ファイル | 変更内容 |
+|----------|----------|
+| `lib/rvc/rmvpe.py` | 新規: DeepUnet + RMVPE クラス。VCClient rmvpe.py から移植、`VoiceChangaerLogger` を `logging.getLogger(__name__)` に置換、`logger.warn` → `logger.warning` |
+| `lib/rvc/preprocessing/extract_f0.py` | `compute_f0()` に `rmvpe` 分岐追加、`processor()` に `rmvpe_model=None` 追加、`run()` に rmvpe シングルプロセス処理追加 |
+| `lib/rvc/pipeline.py` | `get_f0()` に `rmvpe` 分岐追加（`hasattr` による遅延ロード・インスタンス再利用） |
+| `modules/tabs/training.py` | `pitch_extraction_algo` choices に `"rmvpe"` 追加 |
+| `modules/tabs/inference.py` | `pitch_extraction_algo` choices に `"rmvpe"` 追加 |
+| `train_cli.py` | `--pitch-algo` choices に `"rmvpe"` 追加 |
+| `VERIFY.md` | rmvpe 検証セクション追加 |
+| `WORKLOG.md` | Step 9 記録 |
+
+---
+
 ## 未着手
 
 - 人間による RTX 5090 実機検証（`VERIFY.md` 参照）

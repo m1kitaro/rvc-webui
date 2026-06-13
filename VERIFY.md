@@ -260,6 +260,68 @@ print('embedder_name:', d.get('embedder_name'))
 - **原因**: gradio-client 2.x が入っている
 - **対処**: `requirements/main.txt` の `gradio-client==0.2.10` が適用されている venv か確認。古い venv なら削除して `webui-user.bat` から再作成
 
+---
+
+## rmvpe ピッチ抽出の検証
+
+### 前提: rmvpe.pt の配置
+
+rmvpe 使用前に以下のパスにモデルファイルを配置してください。
+
+```
+models/pretrained/rmvpe.pt   ← 172MB
+```
+
+VCClient の pretrain フォルダから取得:
+
+```bat
+copy "C:\tools\voice-changer\server\pretrain\rmvpe.pt" "models\pretrained\rmvpe.pt"
+```
+
+配置確認:
+
+```bat
+dir models\pretrained\rmvpe.pt
+```
+
+### 検証 A: train_cli.py で rmvpe 学習が完走すること
+
+小規模データセット（数分の WAV）で実行:
+
+```bat
+venv\Scripts\python train_cli.py ^
+  --model-name TestRmvpe ^
+  --dataset "data/**/*.wav" ^
+  --pitch-algo rmvpe ^
+  --embedder hubert-base-japanese ^
+  --emb-channels 768 ^
+  --emb-layer 12 ^
+  --epochs 5 ^
+  --batch-size 4 ^
+  --gpu 0
+```
+
+**期待値**:
+- `=== f0 抽出 ===` 後に `2a_f0: N files after extraction` が 0 より大きいこと
+- `[DBG] first batch received` まで進むこと
+- `=== 完了 ===` で終了し、`models/checkpoints/TestRmvpe_*.pth` が生成されること
+
+### 検証 B: harvest と rmvpe の音程・品質比較
+
+同一データセット・同一エポック数で harvest と rmvpe 両方を学習し、出力モデルを比較:
+
+```bat
+REM harvest で学習
+venv\Scripts\python train_cli.py --model-name TestHarvest --pitch-algo harvest ...
+
+REM rmvpe で学習
+venv\Scripts\python train_cli.py --model-name TestRmvpe --pitch-algo rmvpe ...
+```
+
+VCClient で両モデルを試聴し、音程精度・自然さを比較する。
+rmvpe は有声/無声境界の追従が harvest より精細なため、
+子音付近の音程滑らかさが改善されることが期待される。
+
 ### UnpicklingError / weights_only
 
 - **症状**: `Weights only load failed` / `fairseq.data.dictionary.Dictionary was not an allowed global`

@@ -357,7 +357,7 @@ class Training(Tab):
                             label="Normalize audio volume when preprocess",
                         )
                         pitch_extraction_algo = gr.Radio(
-                            choices=["dio", "harvest", "mangio-crepe", "crepe"],
+                            choices=["dio", "harvest", "mangio-crepe", "crepe", "rmvpe"],
                             value="crepe",
                             label="Pitch extraction algorithm",
                         )
