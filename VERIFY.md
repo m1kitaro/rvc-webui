@@ -77,6 +77,82 @@ git log --oneline -3
 
 ---
 
+## train_cli.py — gradio を迂回して学習を直接実行する方法
+
+gradio UI 経由で Train ボタンが動作しない場合（/reset による中断など）に使用する。
+`lib/rvc/train.py` の `[DBG]` ログがそのまま出力されるため、ループのどこで止まるか確認できる。
+
+### 前提
+
+- `venv\Scripts\activate` または `venv\Scripts\python` でリポジトリ直下から実行する
+- 特徴抽出が既に完了している場合は `--train-only` で学習だけ実行できる
+
+### コマンド例
+
+```bat
+REM ① 特徴抽出まで完了済み → 学習だけ実行（切り分け）
+venv\Scripts\python train_cli.py ^
+  --model-name MySpeaker ^
+  --dataset "data/**/*.wav" ^
+  --train-only ^
+  --embedder hubert-base-japanese ^
+  --emb-channels 768 ^
+  --emb-layer 12 ^
+  --epochs 10 ^
+  --batch-size 4 ^
+  --gpu 0
+
+REM ② 前処理・特徴抽出・学習・index 作成をすべて実行
+venv\Scripts\python train_cli.py ^
+  --model-name MySpeaker ^
+  --dataset "data/**/*.wav" ^
+  --embedder hubert-base-japanese ^
+  --emb-channels 768 ^
+  --emb-layer 12 ^
+  --epochs 10 ^
+  --batch-size 4 ^
+  --gpu 0
+```
+
+### 主なオプション一覧
+
+| オプション | デフォルト | 説明 |
+|------------|-----------|------|
+| `--model-name` | MySpeaker | モデル名（training_dir 名） |
+| `--dataset` | data/**/*.wav | 音声ファイルの glob パス |
+| `--train-only` | — | 前処理・特徴抽出をスキップして train_model のみ実行 |
+| `--sr` | 40k | サンプリングレート（32k / 40k / 48k） |
+| `--no-f0` | — | f0 モデルを無効化 |
+| `--embedder` | hubert-base-japanese | 埋め込みモデル名 |
+| `--emb-channels` | 768 | 埋め込み次元（256 / 768） |
+| `--emb-layer` | 12 | 埋め込み出力レイヤ（9 / 12） |
+| `--epochs` | 30 | 総エポック数 |
+| `--batch-size` | 4 | バッチサイズ |
+| `--gpu` | 0 | GPU ID（複数指定: `0,1`） |
+| `--save-every` | 10 | 何エポックごとにチェックポイント保存 |
+| `--fp16` | — | FP16 学習を有効化 |
+| `--no-train-index` | — | 学習後の index 作成をスキップ |
+| `--pretrain-g` / `--pretrain-d` | 自動 | 事前学習モデルのパスを明示指定 |
+
+### 期待される [DBG] ログの流れ
+
+学習ループが正常に動作している場合、以下の順に出力される:
+
+```
+=== train_model 開始 ===
+[DBG] training_runner start rank=0 world_size=1
+[DBG] dist initialized rank=0
+[DBG] DataLoader created num_workers=0
+[DBG] models moved to device rank=0
+[DBG] epoch 1 start rank=0
+[DBG] first batch received epoch=1 rank=0
+...
+```
+
+いずれかのログで止まった場合はその箇所がボトルネック。
+
+---
+
 ## 検証 1: 学習パイプライン完走
 
 **目的**: 前処理 → 特徴抽出（hubert-base-japanese）→ 学習（数エポック）→ index 生成 → モデル保存
