@@ -69,6 +69,10 @@ def parse_args():
                    dest="sampling_rate")
     p.add_argument("--no-f0", action="store_true", help="Disable f0 model")
     p.add_argument("--speaker-id", type=int, default=DEFAULTS["speaker_id"])
+    p.add_argument("--multiple-speakers", action="store_true",
+                   default=DEFAULTS["multiple_speakers"])
+    p.add_argument("--no-recursive", action="store_false", dest="recursive",
+                   help="Disable recursive glob (recursive=True by default)")
     p.add_argument("--gpu", default=DEFAULTS["gpu_id"], dest="gpu_id",
                    help="GPU ID(s), comma separated")
     p.add_argument("--num-cpu", type=int, default=DEFAULTS["num_cpu_process"])
@@ -94,6 +98,7 @@ def parse_args():
         action="store_true",
         help="前処理・特徴抽出をスキップし train_model だけ実行する（切り分け用）",
     )
+    p.set_defaults(recursive=DEFAULTS["recursive"])
     return p.parse_args()
 
 
