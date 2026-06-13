@@ -104,6 +104,11 @@ def parse_args():
         action="store_true",
         help="前処理・特徴抽出をスキップし train_model だけ実行する（切り分け用）",
     )
+    p.add_argument(
+        "--force-extract",
+        action="store_true",
+        help="前回の失敗で残った空の抽出ディレクトリを削除して再抽出を強制する",
+    )
     p.set_defaults(recursive=DEFAULTS["recursive"])
     return p.parse_args()
 
@@ -150,11 +155,39 @@ def main():
     if embedder_load_from == "local":
         embedder_filepath = os.path.join(MODELS_DIR, "embeddings", embedder_filepath)
 
+    def count_npy(directory):
+        n = sum(1 for _, _, fs in os.walk(directory) for f in fs if f.endswith(".npy"))
+        return n
+
+    def count_wav(directory):
+        n = sum(1 for _, _, fs in os.walk(directory) for f in fs if f.endswith(".wav"))
+        return n
+
+    def force_remove_if_empty(directory):
+        """前回の失敗で残った空ディレクトリを削除して再抽出ガードをリセットする。"""
+        import shutil
+        if os.path.exists(directory) and count_npy(directory) == 0:
+            print(f"[force-extract] 空ディレクトリを削除: {directory}", flush=True)
+            shutil.rmtree(directory)
+
     # ── --train-only: 前処理・特徴抽出をスキップ ──────────────────
     if args.train_only:
         print("=== --train-only: 前処理・特徴抽出をスキップ ===", flush=True)
         print(f"training_dir: {training_dir}", flush=True)
+        # 抽出結果の件数を表示して空かどうか確認
+        f0_dir = os.path.join(training_dir, "2a_f0")
+        feat_dir = os.path.join(training_dir, "3_feature256")
+        print(f"  2a_f0       : {count_npy(f0_dir)} files", flush=True)
+        print(f"  3_feature256: {count_npy(feat_dir)} files", flush=True)
+        if count_npy(feat_dir) == 0:
+            print("WARNING: 3_feature256 が空です。--force-extract なしで再抽出するには"
+                  " --train-only を外してください。", flush=True)
     else:
+        # ── --force-extract: 空の抽出ディレクトリを削除 ──────────
+        if args.force_extract:
+            for d in ["2a_f0", "2b_f0nsf", "3_feature256"]:
+                force_remove_if_empty(os.path.join(training_dir, d))
+
         # ── 前処理 ────────────────────────────────────────────────
         print("=== 前処理 (split/preprocess_audio) ===", flush=True)
         datasets = glob_dataset(
@@ -179,21 +212,44 @@ def main():
                 f"mute{args.sampling_rate}.wav",
             ),
         )
+        print(f"  0_gt_wavs: {count_wav(os.path.join(training_dir, '0_gt_wavs'))} files", flush=True)
+        print(f"  1_16k_wavs: {count_wav(os.path.join(training_dir, '1_16k_wavs'))} files", flush=True)
 
         if f0:
             print("=== f0 抽出 ===", flush=True)
-            extract_f0.run(training_dir, args.num_cpu, args.pitch_algo)
+            try:
+                extract_f0.run(training_dir, args.num_cpu, args.pitch_algo)
+            except Exception as e:
+                print(f"ERROR: f0 抽出で例外が発生しました: {e}", flush=True)
+                import traceback; traceback.print_exc()
+                sys.exit(1)
+            n_f0 = count_npy(os.path.join(training_dir, "2a_f0"))
+            print(f"  2a_f0: {n_f0} files after extraction", flush=True)
+            if n_f0 == 0:
+                print("ERROR: f0 抽出の出力が 0 件です。上記ログを確認してください。", flush=True)
+                sys.exit(1)
 
         print("=== 特徴抽出 ===", flush=True)
-        extract_feature.run(
-            training_dir,
-            embedder_filepath,
-            embedder_load_from,
-            args.emb_channels,
-            args.emb_layer,
-            gpu_ids,
-            device,
-        )
+        print(f"  embedder: {args.embedder}  path: {embedder_filepath}", flush=True)
+        try:
+            extract_feature.run(
+                training_dir,
+                embedder_filepath,
+                embedder_load_from,
+                args.emb_channels,
+                args.emb_layer,
+                gpu_ids,
+                device,
+            )
+        except Exception as e:
+            print(f"ERROR: 特徴抽出で例外が発生しました: {e}", flush=True)
+            import traceback; traceback.print_exc()
+            sys.exit(1)
+        n_feat = count_npy(os.path.join(training_dir, "3_feature256"))
+        print(f"  3_feature256: {n_feat} files after extraction", flush=True)
+        if n_feat == 0:
+            print("ERROR: 特徴抽出の出力が 0 件です。上記ログを確認してください。", flush=True)
+            sys.exit(1)
 
         create_dataset_meta(training_dir, f0)
 

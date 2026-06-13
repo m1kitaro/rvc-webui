@@ -171,7 +171,14 @@ def run(
             print(f"GPU {gpu_id} is not available")
             return
 
-    if os.path.exists(out_dir):
+    # Guard: skip only when output dir contains actual .npy files.
+    # An empty dir from a previous failed run must not block re-extraction.
+    if os.path.exists(out_dir) and any(
+        f.endswith(".npy")
+        for _, _, files in os.walk(out_dir)
+        for f in files
+    ):
+        print(f"feature: output already populated, skipping ({out_dir})")
         return
 
     os.makedirs(out_dir, exist_ok=True)

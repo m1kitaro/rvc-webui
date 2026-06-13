@@ -179,13 +179,23 @@ def processor(paths, f0_method, samplerate=16000, hop_size=160, process_id=0):
                 print(f"f0 failed {idx}: {inp_path} {traceback.format_exc()}")
 
 
+def _has_npy(directory: str) -> bool:
+    for _, _, files in os.walk(directory):
+        if any(f.endswith(".npy") for f in files):
+            return True
+    return False
+
+
 def run(training_dir: str, num_processes: int, f0_method: str):
     paths = []
     dataset_dir = os.path.join(training_dir, "1_16k_wavs")
     opt_dir_f0 = os.path.join(training_dir, "2a_f0")
     opt_dir_f0_nsf = os.path.join(training_dir, "2b_f0nsf")
 
-    if os.path.exists(opt_dir_f0) and os.path.exists(opt_dir_f0_nsf):
+    # Guard: skip only when output dirs exist AND contain actual .npy files.
+    # An empty dir from a previous failed run must not block re-extraction.
+    if (_has_npy(opt_dir_f0) and _has_npy(opt_dir_f0_nsf)):
+        print(f"f0: output already populated, skipping ({opt_dir_f0})")
         return
 
     os.makedirs(opt_dir_f0, exist_ok=True)
