@@ -108,15 +108,16 @@ def css_html():
 
 
 def create_head():
-    head = ""
-    head += css_html()
-    head += javascript_html()
+    # gradio 3.36.1 calls TemplateResponse(name: str, context: dict) — old starlette API.
+    # starlette 1.x changed the signature to TemplateResponse(request, name, context).
+    # Patch the instance method to translate arguments; called once at startup.
+    _orig = shared.gradio_template_response_original
 
     def template_response(*args, **kwargs):
-        res = shared.gradio_template_response_original(*args, **kwargs)
-        res.body = res.body.replace(b"</head>", f"{head}</head>".encode("utf8"))
-        res.init_headers()
-        return res
+        if len(args) >= 2 and isinstance(args[0], str) and isinstance(args[1], dict):
+            name, context = args[0], args[1]
+            return _orig(context.get("request"), name, context, *args[2:], **kwargs)
+        return _orig(*args, **kwargs)
 
     gradio.routes.templates.TemplateResponse = template_response
 

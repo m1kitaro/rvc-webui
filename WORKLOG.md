@@ -487,6 +487,75 @@ ffmpeg エラーは gyan.dev からの DL 破損/ネットワーク起因で、i
 
 ---
 
+## Step 6: starlette 1.x 互換パッチ（TemplateResponse 引数順序）
+
+実施日: 2026-06-13
+
+### 6-1. 問題
+
+**実エラー**（起動後にブラウザアクセスすると連続発生）:
+
+```
+File "venv/lib/site-packages/gradio/routes.py", line 271, in main
+    return templates.TemplateResponse(
+File "venv/lib/site-packages/starlette/templating.py", line 148, in TemplateResponse
+    template = self.get_template(name)
+  ...
+TypeError: unhashable type: 'dict'
+ValueError: When localhost is not accessible, a shareable link must be created.
+```
+
+**原因**: gradio 3.36.1 は旧 starlette API `TemplateResponse(name: str, context: dict)` で呼ぶが、
+starlette 1.3.1 の新 API は `TemplateResponse(request: Request, name: str, context: dict)` に変更された。
+gradio が渡した `context` dict が `name` 位置に入り、jinja2 がテンプレート名として dict をハッシュしようとして失敗する。
+
+- インストール済み: `starlette==1.3.1`、`gradio==3.36.1`（固定）
+- HTTP 500 が連続するため gradio の launch() が localhost 疎通確認で失敗し `ValueError` になる
+
+### 6-2. 採用方針
+
+**案A（最小修正）を採用**: `modules/ui.py` の `create_head()` に引数変換パッチを適用。
+lib/rvc/ 以下の学習コア・gradio バージョン・依存バージョンは変更なし。
+
+CLI 案（案B）は今回不要と判断: 引数変換1箇所の修正でUI が完全復旧したため。
+
+### 6-3. 修正内容
+
+**`modules/ui.py` `create_head()` を変更**:
+
+- 旧実装: CSS/JS を HTML head に注入する monkeypatch（starlette 0.x 時代の body 書き換え）→ `res.body` が starlette 1.x のストリーミングレスポンスに存在しないためコメントアウトされていた
+- 新実装: 引数変換のみに特化。gradio が渡す `(name, context)` を starlette 1.x の `(request, name, context)` に変換してから元のメソッドを呼ぶ。CSS/JS head 注入は削除（学習ワークフローに不要）
+
+```python
+def template_response(*args, **kwargs):
+    if len(args) >= 2 and isinstance(args[0], str) and isinstance(args[1], dict):
+        name, context = args[0], args[1]
+        return _orig(context.get("request"), name, context, *args[2:], **kwargs)
+    return _orig(*args, **kwargs)
+```
+
+### 6-4. 検証結果
+
+エージェント環境（GPU なし）での起動テスト:
+
+```
+Running on local URL:  http://127.0.0.1:7862
+LAUNCH_OK
+HTTP GET / → 200 OK
+BODY: <!doctype html><html ...>  ← 正常 HTML
+```
+
+gradio UI が HTTP 200 で返るようになり、TemplateResponse エラー・ValueError とも解消。
+
+### 6-5. 変更ファイル
+
+| ファイル | 変更内容 |
+|----------|----------|
+| `modules/ui.py` | `create_head()`: starlette 1.x 引数変換パッチ |
+| `WORKLOG.md` | Step 6 記録 |
+
+---
+
 ## 未着手
 
 - 人間による RTX 5090 実機検証（`VERIFY.md` 参照）

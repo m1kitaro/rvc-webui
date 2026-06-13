@@ -62,6 +62,19 @@ venv\Scripts\python -m pip check
 
 期待値: `No broken requirements found.`
 
+### UI 表示確認（Step 6 修正の検証）
+
+起動後、ブラウザで `http://127.0.0.1:7860/` にアクセスして gradio UI が表示されることを確認する。
+
+**以前の症状（修正前）**: ブラウザアクセスのたびに `TypeError: unhashable type: 'dict'` がサーバーログに出て UI が表示されない。  
+**修正後の期待値**: HTTP 200、gradio の Training タブを含む UI が正常表示される。
+
+サーバーログに `TypeError` / `TemplateResponse` 関連エラーが出る場合は、`feature/blackwell-support` ブランチの最新コミット（Step 6）が含まれているか確認する:
+
+```bat
+git log --oneline -3
+```
+
 ---
 
 ## 検証 1: 学習パイプライン完走
