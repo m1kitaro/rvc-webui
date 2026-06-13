@@ -613,6 +613,72 @@ Windows では `multiprocessing` の start method が `spawn` のみ。`num_work
 
 ---
 
+## Step 8: train_cli.py に augment 機能を追加
+
+実施日: 2026-06-13
+
+### 8-1. 背景
+
+`AUGMENT_INVESTIGATION.md` の調査（Step 8 前段）に基づき、CLI から augment 機能を使えるようにした。
+`lib/rvc/train.py` の augment 処理本体（`training_runner` 内 `change_speaker` 等）はすでに完全実装済みのため、
+`train_cli.py` から引数を渡す変更のみ行う。
+
+### 8-2. 変更内容（`train_cli.py` のみ）
+
+**① `DEFAULTS` 辞書の整理**
+
+旧キー `augment_path`, `speaker_info_path` を削除し、CLI 引数名と一致するキーに変更:
+- `augment_from_pretrain: False`
+- `augment_pretrain_g: ""`
+- `speaker_info: ""`
+
+**② `parse_args()` に4引数を追加**
+
+| 引数 | dest | 型 | デフォルト | 説明 |
+|---|---|---|---|---|
+| `--augment` | `augment` | bool | False | オーグメンテーション有効化 |
+| `--augment-from-pretrain` | `augment_from_pretrain` | bool | False | 外部モデルを使う |
+| `--augment-pretrain-g PATH` | `augment_pretrain_g` | str | `""` | augment 用 generator .pth パス |
+| `--speaker-info PATH` | `speaker_info` | str | `""` | speaker_info.npy パス |
+
+**③ `train_model` 呼び出しの修正**
+
+UI の `train_all` (training.py lines 244–270) と等価なロジックを実装:
+
+```python
+# augment_from_pretrain=True のときだけ外部パスを使う
+if args.augment and args.augment_from_pretrain:
+    augment_path = args.augment_pretrain_g or None
+    speaker_info_path = args.speaker_info or None
+else:
+    augment_path = None      # ← augment_from_pretrain=False: 自動計算モード
+    speaker_info_path = None
+
+train_model(..., args.augment, augment_path, speaker_info_path, ...)
+```
+
+**④ バグ修正**
+
+旧コード `augment_path = args.pretrain_g or None`（pretrain_g を augment_path に誤用）を除去。
+`pretrain_g`（backbone 事前学習モデル）と augment 用パスは別物。
+
+### 8-3. 動作モード
+
+| `--augment` | `--augment-from-pretrain` | 動作 |
+|---|---|---|
+| なし | — | augment 無効（従来通り） |
+| あり | なし | 自前データの f0nsf から speaker_info を自動計算 |
+| あり | あり + `--augment-pretrain-g` + `--speaker-info` | 外部多話者モデルでオーグメンテーション |
+
+### 8-4. 変更ファイル
+
+| ファイル | 変更内容 |
+|---|---|
+| `train_cli.py` | 上記①〜④ |
+| `WORKLOG.md` | Step 8 記録 |
+
+---
+
 ## 未着手
 
 - 人間による RTX 5090 実機検証（`VERIFY.md` 参照）

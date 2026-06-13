@@ -51,8 +51,9 @@ DEFAULTS = {
     "save_only_last": False,
     "cache_batch": True,
     "augment": False,
-    "augment_path": "",
-    "speaker_info_path": "",
+    "augment_from_pretrain": False,
+    "augment_pretrain_g": "",
+    "speaker_info": "",
     "embedder_name": "hubert-base-japanese",
     "embedding_channels": 768,    # 256 / 768
     "embedding_output_layer": 12, # 9 / 12
@@ -108,6 +109,30 @@ def parse_args():
         "--force-extract",
         action="store_true",
         help="前回の失敗で残った空の抽出ディレクトリを削除して再抽出を強制する",
+    )
+    p.add_argument(
+        "--augment",
+        action="store_true",
+        help="学習ループ内でのデータオーグメンテーションを有効化する",
+    )
+    p.add_argument(
+        "--augment-from-pretrain",
+        action="store_true",
+        help="外部の多話者事前学習済みジェネレータを augment に使う（--augment と併用）",
+    )
+    p.add_argument(
+        "--augment-pretrain-g",
+        default=DEFAULTS["augment_pretrain_g"],
+        dest="augment_pretrain_g",
+        metavar="PATH",
+        help="augment 用ジェネレータ .pth のパス（--augment-from-pretrain 時に有効）",
+    )
+    p.add_argument(
+        "--speaker-info",
+        default=DEFAULTS["speaker_info"],
+        dest="speaker_info",
+        metavar="PATH",
+        help="speaker_info.npy のパス（--augment-from-pretrain 時に有効）",
     )
     p.set_defaults(recursive=DEFAULTS["recursive"])
     return p.parse_args()
@@ -264,8 +289,21 @@ def main():
         args.fp16,
     )
 
-    augment_path = args.pretrain_g or None   # augment 未使用時は None
-    speaker_info_path = None                  # augment_from_pretrain=False 相当
+    # augment_from_pretrain=True のときだけ外部パスを使う（UI の train_all と等価）
+    if args.augment and args.augment_from_pretrain:
+        augment_path = args.augment_pretrain_g or None
+        speaker_info_path = args.speaker_info or None
+    else:
+        augment_path = None
+        speaker_info_path = None
+
+    if args.augment:
+        print(f"  augment=True  from_pretrain={args.augment_from_pretrain}", flush=True)
+        if augment_path:
+            print(f"  augment_pretrain_g: {augment_path}", flush=True)
+            print(f"  speaker_info: {speaker_info_path}", flush=True)
+        else:
+            print("  augment_path=None: 自前データから speaker_info を自動計算", flush=True)
 
     train_model(
         gpu_ids,
@@ -276,9 +314,9 @@ def main():
         args.sampling_rate,
         f0,
         args.batch_size,
-        False,               # augment
-        None,                # augment_path
-        None,                # speaker_info_path
+        args.augment,        # bool（--augment 指定時のみ True）
+        augment_path,        # str | None
+        speaker_info_path,   # str | None
         args.cache_batch,
         args.epochs,
         args.save_every,
