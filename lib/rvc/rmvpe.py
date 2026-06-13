@@ -355,9 +355,14 @@ class RMVPE:
     def mel2hidden(self, mel):
         with torch.no_grad():
             n_frames = mel.shape[-1]
-            mel = F.pad(
-                mel, (0, 32 * ((n_frames - 1) // 32 + 1) - n_frames), mode="reflect"
-            )
+            n_pad = 32 * ((n_frames - 1) // 32 + 1) - n_frames
+            if n_pad > 0:
+                # reflect requires pad < input length (fails when n_frames <= 16, ~0.16s);
+                # fall back to constant (zero) padding for very short inputs.
+                # Zero-padded frames produce near-zero model salience → f0=0 (unvoiced),
+                # which is the correct treatment for audio too short to estimate pitch.
+                pad_mode = "reflect" if n_pad < n_frames else "constant"
+                mel = F.pad(mel, (0, n_pad), mode=pad_mode)
             hidden = self.model(mel)
             return hidden[:, :n_frames]
 

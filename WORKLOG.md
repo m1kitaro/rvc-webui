@@ -743,6 +743,20 @@ else:
 | `VERIFY.md` | rmvpe 検証セクション追加 |
 | `WORKLOG.md` | Step 9 記録 |
 
+### 9-5. バグ修正: mel2hidden の reflect パディング境界条件
+
+**症状**: 短いファイル（≈0.16秒以下）で `RuntimeError: Padding size should be less than the corresponding input dimension` が発生。`processor()` の `except` で捕捉されスキップされるが、スキップ率が高いデータセットでは f0 抽出件数が大幅に減る。
+
+**根本原因**: `mel2hidden()` の `F.pad(..., mode="reflect")` は `pad < input_size` を要求する。
+`n_frames <= 16`（hop=160, sr=16000 → 約 0.16 秒以下）のとき `n_pad = 32 - n_frames >= n_frames` となり条件違反。
+
+**対処**: `n_pad >= n_frames` のとき `mode="constant"`（ゼロパディング）にフォールバック。
+ゼロパディングされたフレームはモデルの salience が near-zero → f0=0（無声扱い）になり、
+短すぎてピッチ推定不能なファイルへの対処として harvest/dio の挙動と整合している。
+（harvest/dio は pyworld が短い音声を graceful に処理し 0 フレーム or 0 値を返す）
+
+**変更箇所**: `lib/rvc/rmvpe.py` `mel2hidden()` のみ（4行追加）。
+
 ---
 
 ## 未着手
