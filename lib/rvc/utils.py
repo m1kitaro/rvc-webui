@@ -24,6 +24,12 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logger = logging
 
 
+def _ffmpeg_cmd():
+    # Prefer bin/ffmpeg.exe bundled by install_ffmpeg() over any system ffmpeg.
+    bundled = os.path.join(ROOT_DIR, "bin", "ffmpeg.exe")
+    return bundled if os.path.isfile(bundled) else "ffmpeg"
+
+
 def load_audio(file: str, sr):
     try:
         # https://github.com/openai/whisper/blob/main/whisper/audio.py#L26
@@ -35,7 +41,7 @@ def load_audio(file: str, sr):
         out, _ = (
             ffmpeg.input(file, threads=0)
             .output("-", format="f32le", acodec="pcm_f32le", ac=1, ar=sr)
-            .run(cmd=["ffmpeg", "-nostdin"], capture_stdout=True, capture_stderr=True)
+            .run(cmd=[_ffmpeg_cmd(), "-nostdin"], capture_stdout=True, capture_stderr=True)
         )
     except Exception as e:
         raise RuntimeError(f"Failed to load audio: {e}")

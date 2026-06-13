@@ -20,6 +20,12 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+# bin/ffmpeg.exe（install_ffmpeg が配置）を PATH 先頭に追加
+# lib/rvc/utils.py の _ffmpeg_cmd() が絶対パスで解決するが、
+# ffmpeg-python の内部呼び出し等に備えて PATH にも登録しておく
+_bin_dir = os.path.join(ROOT_DIR, "bin")
+os.environ["PATH"] = _bin_dir + os.pathsep + os.environ.get("PATH", "")
+
 # torch_compat を最初に適用（weights_only=False パッチ）
 import modules.torch_compat  # noqa: F401
 
