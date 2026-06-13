@@ -18,11 +18,35 @@
 | 作業ブランチ | `feature/blackwell-support` | `git branch --show-current` |
 | 作業ディレクトリ | 本フォーク（既存の動作中インストールには触れない） | — |
 
+### 検証前: 古い venv の削除（必須）
+
+**改修前の venv が残っていると検証結果が無効になります。** 必ず削除してから起動してください。
+
+`launch.py` は torch / torchaudio を **未インストール時のみ** インストールします（`--reinstall-torch` 指定時を除く）。  
+既存 venv に cu118 版 torch（例: `2.0.0+cu118`）が入ったままだと再インストールされず、RTX 5090 上で次のエラーになります:
+
+```
+CUDA error: no kernel image is available for execution on the device
+```
+
+**手順**（リポジトリ直下で実行）:
+
+1. WebUI / 関連プロセスをすべて終了する
+2. `venv` フォルダを削除する
+   ```bat
+   rmdir /s /q venv
+   ```
+3. 削除後、`venv` フォルダが存在しないことを確認する
+4. 以下「初回起動」に進む（`webui-user.bat` が新規 venv を作成し、torch 2.7.1+cu128 を入れる）
+
+> 既存 venv を使い続けたい場合は `webui-user.bat` の `COMMANDLINE_ARGS` に `--reinstall-torch` を追加する方法もありますが、**検証時は venv 削除を推奨**します（依存全体をクリーンに再解決できるため）。
+
 ### 初回起動（依存インストール）
 
-1. `webui-user.bat` をダブルクリック（または `webui.bat`）
-2. 初回は venv 作成 → torch 2.7.1+cu128 → requirements インストールが走る
-3. 完了後 Gradio URL が表示されれば WebUI 起動成功
+1. 上記のとおり **venv を削除済み**であることを確認する
+2. `webui-user.bat` をダブルクリック（または `webui.bat`）
+3. 新規 venv 作成 → torch 2.7.1+cu128 → requirements インストールが走る
+4. 完了後 Gradio URL が表示されれば WebUI 起動成功
 
 手動確認（任意）:
 
