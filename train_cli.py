@@ -95,7 +95,10 @@ def parse_args():
                    choices=[9, 12])
     p.add_argument("--fp16", action="store_true")
     p.add_argument("--save-only-last", action="store_true")
-    p.add_argument("--cache-batch", action="store_true", default=DEFAULTS["cache_batch"])
+    p.add_argument("--cache-batch", action="store_true", default=DEFAULTS["cache_batch"],
+                   dest="cache_batch", help="バッチをVRAMにキャッシュ(小データ高速化。既定True)")
+    p.add_argument("--no-cache-batch", action="store_false", dest="cache_batch",
+                   help="バッチのVRAMキャッシュを無効化(大規模データでVRAM枯渇を防ぐ)")
     p.add_argument("--no-train-index", action="store_true")
     p.add_argument("--ignore-cache", action="store_true")
     p.add_argument("--pretrain-g", default=DEFAULTS["pretrain_g"])
