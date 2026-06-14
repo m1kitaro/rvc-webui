@@ -106,6 +106,11 @@ def parse_args():
         help="前処理・特徴抽出をスキップし train_model だけ実行する（切り分け用）",
     )
     p.add_argument(
+        "--extract-only",
+        action="store_true",
+        help="前処理・f0抽出・特徴抽出だけ実行し、学習とindex作成をスキップする（分析用）",
+    )
+    p.add_argument(
         "--force-extract",
         action="store_true",
         help="前回の失敗で残った空の抽出ディレクトリを削除して再抽出を強制する",
@@ -279,6 +284,12 @@ def main():
         create_dataset_meta(training_dir, f0)
 
     # ── 学習 ──────────────────────────────────────────────────────
+    if args.extract_only:
+        print("=== --extract-only: 特徴抽出まで完了。学習・index作成をスキップして終了 ===", flush=True)
+        print(f"  2b_f0nsf    : {count_npy(os.path.join(training_dir, '2b_f0nsf'))} files", flush=True)
+        print(f"  3_feature256: {count_npy(os.path.join(training_dir, '3_feature256'))} files", flush=True)
+        return
+
     print("=== train_model 開始 ===", flush=True)
 
     config = load_config(
