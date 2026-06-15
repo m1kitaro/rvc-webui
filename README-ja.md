@@ -78,6 +78,7 @@ venv\Scripts\python train_cli.py --model-name MySpeaker --dataset "data\**\*.wav
 | `--train-only` | — | 前処理・特徴抽出をスキップし学習のみ実行 |
 | `--extract-only` | — | 特徴抽出まで実行し学習・index 作成をスキップ |
 | `--fp16` | — | FP16 学習を有効化 |
+| `--no-cache-batch` | — | バッチの VRAM キャッシュを無効化（大規模データで VRAM 枯渇を防ぐ） |
 
 全オプションは `venv\Scripts\python train_cli.py --help` で確認できます。
 

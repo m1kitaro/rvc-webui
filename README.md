@@ -78,6 +78,7 @@ Key options:
 | `--train-only` | — | Skip preprocessing/extraction, run training only |
 | `--extract-only` | — | Run extraction only, skip training and index creation |
 | `--fp16` | — | Enable FP16 training |
+| `--no-cache-batch` | — | Disable batch VRAM cache (prevents VRAM exhaustion on large datasets) |
 
 Run `venv\Scripts\python train_cli.py --help` for all options.
 
